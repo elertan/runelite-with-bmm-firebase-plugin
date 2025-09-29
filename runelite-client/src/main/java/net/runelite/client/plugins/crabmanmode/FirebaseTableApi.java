@@ -20,14 +20,6 @@ public class FirebaseTableApi implements UnlockedItemTableApi {
     private final String url;
     private final Gson gson;
 
-    private static class GetResponse {
-        Map<String, Object> value;
-    }
-
-    private static class ListResponse {
-        Map<String, Map<String, Object>> value;
-    }
-
     public FirebaseTableApi(String url, Gson gson, OkHttpClient httpClient) {
         this.httpClient = httpClient;
         this.url = url;
@@ -42,33 +34,33 @@ public class FirebaseTableApi implements UnlockedItemTableApi {
                 .build();
         String jsonResponse = sendRequest(request);
 
-        Type type = new TypeToken<GetResponse>() {
+        Type type = new TypeToken<Map<String, Object>>() {
         }.getType();
-        GetResponse response = gson.fromJson(jsonResponse, type);
-        if (response == null || response.value == null) {
+        Map<String, Object> response = gson.fromJson(jsonResponse, type);
+        if (response == null) {
             return null;
         }
 
-        return this.mapToEntity(response.value);
+        return this.mapToEntity(response);
     }
 
     @Override
     public List<UnlockedItemEntity> listEntities() throws Exception {
         String url = this.url + "/" + partitionKey + ".json";
-        log.info("listEntities url: {}", url);
         Request request = createRequestBuilder(url)
                 .get()
                 .build();
         String jsonResponse = sendRequest(request);
 
-        Type type = new TypeToken<ListResponse>() {
-        }.getType();
-        ListResponse response = gson.fromJson(jsonResponse, type);
-        if (response == null || response.value == null) {
+        Type type = new TypeToken<Map<String, Map<String, Object>>>(){}.getType();
+        Map<String, Map<String, Object>> response = gson.fromJson(jsonResponse, type);
+
+        if (response == null) {
+            log.info("listEntities response is null");
             return new ArrayList<>();
         }
 
-        return response.value.values().stream()
+        return response.values().stream()
                 .map(this::mapToEntity)
                 .collect(Collectors.toList());
     }
@@ -121,7 +113,7 @@ public class FirebaseTableApi implements UnlockedItemTableApi {
     }
 
     private UnlockedItemEntity mapToEntity(Map<String, Object> map) {
-        Integer itemId = Integer.parseInt((String) map.get("ItemId"));
+        int itemId = ((Double)map.get("ItemId")).intValue();
         String itemName = (String) map.get("ItemName");
         String acquiredBy = (String) map.get("AcquiredBy");
         OffsetDateTime acquiredOn = OffsetDateTime.parse((String) map.get("AcquiredOn"));

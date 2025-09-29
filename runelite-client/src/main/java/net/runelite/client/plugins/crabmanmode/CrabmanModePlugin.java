@@ -66,7 +66,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @PluginDescriptor(name = "Group Bronzeman Mode", description = "Modification of bronzeman mode plugin to support group bronzeman. Limits access to buying an item on the Grand Exchange until it is obtained otherwise.", tags = {
-        "overlay", "bronzeman", "crabman", "group bronzeman" })
+        "overlay", "bronzeman", "crabman", "group bronzeman"})
 public class CrabmanModePlugin extends Plugin {
     static final String CONFIG_GROUP = "crabmanmode";
     private static final String GBM_UNLOCKS_STRING = "!gbmunlocks";
@@ -223,7 +223,9 @@ public class CrabmanModePlugin extends Plugin {
         });
     }
 
-    /** Loads players unlocks on login **/
+    /**
+     * Loads players unlocks on login
+     **/
     @Subscribe
     public void onGameStateChanged(GameStateChanged e) {
         if (e.getGameState() == GameState.LOGGED_IN) {
@@ -244,7 +246,9 @@ public class CrabmanModePlugin extends Plugin {
         }
     }
 
-    /** Unlocks all new items that are currently not unlocked **/
+    /**
+     * Unlocks all new items that are curr ently not unlocked
+     **/
     @Subscribe
     public void onItemContainerChanged(ItemContainerChanged e) {
         if (OWNED_INVENTORY_IDS.contains(e.getContainerId())) {
@@ -257,6 +261,11 @@ public class CrabmanModePlugin extends Plugin {
         if (event.getScriptId() == GE_SEARCH_BUILD_SCRIPT) {
             killSearchResults();
         }
+        if (event.getScriptId() == ScriptID.TRADE_MAIN_INIT) {
+            log.info("trade found?");
+            //killTrade();
+        }
+        killTrade();
     }
 
     @Subscribe
@@ -325,7 +334,24 @@ public class CrabmanModePlugin extends Plugin {
                 updateAllowedCrabman();
             } else if (event.getKey().equals("azureSasUrl") || event.getKey().equals("databaseTable")) {
                 initializeDatabase();
+            } else if (event.getKey().equals("firebaseRealtimeDatabaseUrl")) {
+                initializeDatabase();
+            } else if (event.getKey().equals("storageType")) {
+                initializeDatabase();
             }
+        }
+    }
+
+    @Subscribe
+    public void onMenuOptionClicked(MenuOptionClicked event)
+    {
+        if (event.getWidget() != null
+                && event.getWidget().getId() == InterfaceID.Trademain.ACCEPT
+                && !isAllowedToPerformTrade())
+        {
+            log.info("Trademain accept clicked and cancelled");
+            event.consume(); // cancels the click
+            client.playSoundEffect(2277); // Play fail sound
         }
     }
 
@@ -390,7 +416,9 @@ public class CrabmanModePlugin extends Plugin {
         panel.displayItems(filteredItems); // Redraw the panel
     }
 
-    /** Unlocks all items in the given item container. **/
+    /**
+     * Unlocks all items in the given item container.
+     **/
     public void unlockItemContainerItems(ItemContainer itemContainer) {
         if (onSeasonalWorld) {
             return;
@@ -423,7 +451,9 @@ public class CrabmanModePlugin extends Plugin {
         });
     }
 
-    /** Queues a new unlock to be properly displayed **/
+    /**
+     * Queues a new unlock to be properly displayed
+     **/
     public void queueItemUnlock(int itemId, boolean skipChecks) {
         // Should only be used for Bonds and Gold
         if (!skipChecks) {
@@ -465,7 +495,9 @@ public class CrabmanModePlugin extends Plugin {
                 });
     }
 
-    /** Unlocks default items like a bond to a newly made profile **/
+    /**
+     * Unlocks default items like a bond to a newly made profile
+     **/
     private void unlockDefaultItems() {
         queueItemUnlock(ItemID.COINS_995, true);
         queueItemUnlock(ItemID.OLD_SCHOOL_BOND, true);
@@ -507,6 +539,54 @@ public class CrabmanModePlugin extends Plugin {
         }
 
         panel.displayItems(new ArrayList<ItemObject>()); // Redraw the panel
+    }
+
+    void killTrade() {
+        Widget trademainOtherOffer = client.getWidget(InterfaceID.Trademain.OTHER_OFFER);
+
+        boolean hasOfferedBadItem = false;
+        if (trademainOtherOffer != null) {
+            Map<Integer, UnlockedItemEntity> unlockedItems = databaseRepo.getUnlockedItems();
+
+            Widget[] children = trademainOtherOffer.getDynamicChildren();
+            if (children != null) {
+                for (Widget child : children) {
+                    if (child == null) {
+                        continue;
+                    }
+                    int itemId = child.getItemId();
+                    if (itemId == -1 || child.isHidden()) {
+                        continue;
+                    }
+
+                    boolean itemIsUnlocked = unlockedItems.containsKey(itemId);
+                    if (!itemIsUnlocked) {
+                        child.setOpacity(150);
+                        hasOfferedBadItem = true;
+                    } else {
+                        child.setOpacity(0);
+                    }
+                }
+            }
+        }
+
+        Widget trademainAcceptRect0 = client.getWidget(InterfaceID.Trademain.ACCEPT_RECT0);
+        Widget trademainAccepText = client.getWidget(InterfaceID.Trademain.ACCEPT_TEXT);
+        if (hasOfferedBadItem) {
+            if (trademainAcceptRect0 != null) {
+                trademainAcceptRect0.setOpacity(100);
+            }
+            if (trademainAccepText != null) {
+                trademainAccepText.setOpacity(100);
+            }
+        } else {
+            if (trademainAcceptRect0 != null) {
+                trademainAcceptRect0.setOpacity(0);
+            }
+            if (trademainAccepText != null) {
+                trademainAccepText.setOpacity(0);
+            }
+        }
     }
 
     private void updateNamesBronzeman() {
@@ -863,5 +943,32 @@ public class CrabmanModePlugin extends Plugin {
                         });
                     }
                 });
+    }
+
+    private boolean isAllowedToPerformTrade() {
+        Widget trademainOtherOffer = client.getWidget(InterfaceID.Trademain.OTHER_OFFER);
+        if (trademainOtherOffer == null) {
+            return false;
+        }
+        Map<Integer, UnlockedItemEntity> unlockedItems = databaseRepo.getUnlockedItems();
+        Widget[] children = trademainOtherOffer.getDynamicChildren();
+        if (children != null) {
+            for (Widget child : children) {
+                if (child == null) {
+                    continue;
+                }
+                int itemId = child.getItemId();
+                if (itemId == -1 || child.isHidden()) {
+                    continue;
+                }
+
+                boolean itemIsUnlocked = unlockedItems.containsKey(itemId);
+                if (!itemIsUnlocked) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }
